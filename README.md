@@ -6,6 +6,9 @@
 
 ---
 
+<img width="798" height="920" alt="Hermes_版本信息查询" src="https://github.com/user-attachments/assets/5e29bdfd-5da1-4d8b-b1b0-2b58003c364e" />
+
+
 ## 初步排查：这不是 Z.ai 的限流
 
 最近升级了 Z.ai 的 Coding Plan，也尝试把 Hermes Agent 的主模型从 `DeepSeek V4 Pro` 切到 `zai/glm-5.2`，但是发出去的第一个请求直接吃 `HTTP 429` + provider `code 1305`。第一反应是额度用完了，去 Z.AI 后台查，额度充足。换了一个新 key，一样。然后我尝试降低请求长度、砍 tools、换 model 变体、减少 prefill 的 system prompt 注入等等，全没用。但诡异的是，同一个 key 用 curl 裸调一个短 prompt，能通。
