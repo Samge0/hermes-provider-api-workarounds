@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hermes Agent 优化：解决 GLM-5.2 模型 429 (1305 overloaded)</title>
+    <link rel="icon" type="image/png" href="icon.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        serif: ['Noto Serif SC', 'serif'],
+                        display: ['Manrope', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#fef5f5',
+                            100: '#fde8e8',
+                            200: '#fbd5d5',
+                            300: '#f7b3b3',
+                            400: '#f38080',
+                            500: '#d84146',
+                            600: '#c0373c',
+                            700: '#a3292e',
+                            800: '#882126',
+                            900: '#711a1f',
+                        },
+                        neutral: {
+                            50: '#fafafa',
+                            100: '#f5f5f5',
+                            200: '#e5e5e5',
+                            300: '#d4d4d4',
+                            400: '#a3a3a3',
+                            500: '#737373',
+                            600: '#525252',
+                            700: '#404040',
+                            800: '#262626',
+                            900: '#171717',
+                        }
+                    },
+                    spacing: {
+                        '8': '0.5rem',
+                        '16': '1rem',
+                        '24': '1.5rem',
+                        '32': '2rem',
+                        '40': '2.5rem',
+                        '48': '3rem',
+                        '64': '4rem',
+                        '80': '5rem',
+                        '96': '6rem',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+            background: linear-gradient(135deg, #fafafa 0%, #fef5f5 100%);
+            min-height: 100vh;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(216, 65, 70, 0.1);
+        }
+        .glass-card:hover {
+            border-color: rgba(216, 65, 70, 0.2);
+            box-shadow: 0 8px 32px rgba(216, 65, 70, 0.12);
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #d84146 0%, #f38080 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .icon-gradient {
+            background: linear-gradient(135deg, #d84146 0%, #c0373c 100%);
+        }
+        details > summary {
+            cursor: pointer;
+            list-style: none;
+            transition: all 0.2s;
+        }
+        details > summary::-webkit-details-marker {
+            display: none;
+        }
+        details[open] > summary {
+            border-bottom: 1px solid rgba(216, 65, 70, 0.1);
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+        }
+        .code-block {
+            background: #fafafa;
+            border-left: 3px solid #d84146;
+        }
+        @media (max-width: 768px) {
+            .mobile-hide {
+                display: none;
+            }
+            .mobile-stack {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body class="text-neutral-800">
+    <!-- Navigation -->
+    <nav class="sticky top-0 z-50 glass-card border-b border-neutral-200/50">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center space-x-3">
+                    <img src="icon.png" alt="Hermes Agent" class="w-9 h-9">
+                    <span class="font-semibold text-neutral-900">Hermes Agent</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <a href="#" class="text-neutral-600 hover:text-brand-500 transition-colors hidden sm:block">文档</a>
+                    <a href="#" class="text-neutral-600 hover:text-brand-500 transition-colors hidden sm:block">API</a>
+                    <a href="https://github.com/NousResearch/hermes-agent" class="text-neutral-600 hover:text-brand-500 transition-colors">GitHub</a>
+                    <a href="#solutions" class="icon-gradient text-white px-4 py-2 rounded-lg font-medium hover:shadow-lg transition-all">解决方案</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="py-20 px-4">
+        <div class="max-w-4xl mx-auto text-center">
+            <div class="inline-flex items-center space-x-2 glass-card px-4 py-2 rounded-full mb-8">
+                <span class="icon-gradient w-2 h-2 rounded-full"></span>
+                <span class="text-sm text-neutral-600">技术分享 | Yawatasensei</span>
+            </div>
+            
+            <h1 class="font-display text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight">
+                <span class="gradient-text">Hermes Agent 优化</span>
+                <br>
+                <span class="text-neutral-900">解决 GLM-5.2 模型 429 (1305 overloaded)</span>
+            </h1>
+            
+            <p class="text-lg text-neutral-600 max-w-2xl mx-auto mb-10 leading-relaxed">
+                从假限流到真凶（system prompt 内容过滤 + 客户端指纹检测）的完整排查，
+                给出了不改磁盘、只改请求路径的 Provider-gated 方案。
+            </p>
+            
+            <div class="flex flex-col sm:flex-row justify-center gap-4">
+                <a href="#solutions" class="icon-gradient text-white px-8 py-3 rounded-lg font-semibold hover:shadow-xl transition-all inline-flex items-center justify-center space-x-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                    <span>查看解决方案</span>
+                </a>
+                <a href="#investigation" class="glass-card text-neutral-800 px-8 py-3 rounded-lg font-semibold hover:bg-white transition-all inline-flex items-center justify-center space-x-2 border border-neutral-300">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                    <span>排查过程</span>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Problem Overview -->
+    <section class="py-16 px-4 bg-white/50">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-12">
+                <h2 class="font-display text-3xl font-bold text-neutral-900 mb-4">问题概览</h2>
+                <p class="text-neutral-600 max-w-2xl mx-auto">Hermes Agent 使用 zai/glm-5.2 Coding Plan 后疯狂吃 429？</p>
+            </div>
+            
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="glass-card rounded-xl p-6 transition-all">
+                    <div class="icon-gradient w-12 h-12 rounded-lg flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-2 text-neutral-900">错误代码 429</h3>
+                    <p class="text-neutral-600 text-sm leading-relaxed">HTTP 429 状态码，provider code 1305 overloaded 错误</p>
+                </div>
+                
+                <div class="glass-card rounded-xl p-6 transition-all">
+                    <div class="icon-gradient w-12 h-12 rounded-lg flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-2 text-neutral-900">假限流真过滤</h3>
+                    <p class="text-neutral-600 text-sm leading-relaxed">不是真正的限流，而是内容过滤 + 客户端指纹检测</p>
+                </div>
+                
+                <div class="glass-card rounded-xl p-6 transition-all">
+                    <div class="icon-gradient w-12 h-12 rounded-lg flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-2 text-neutral-900">Provider-gated 方案</h3>
+                    <p class="text-neutral-600 text-sm leading-relaxed">不改磁盘文件，只改请求路径，最小侵入性修复</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Investigation Process -->
+    <section id="investigation" class="py-16 px-4">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-12">
+                <h2 class="font-display text-3xl font-bold text-neutral-900 mb-4">排查过程</h2>
+                <p class="text-neutral-600 max-w-2xl mx-auto">从初步排查到关键发现的完整过程</p>
+            </div>
+            
+            <div class="space-y-8">
+                <!-- Step 1 -->
+                <div class="glass-card rounded-xl p-8">
+                    <div class="flex items-start space-x-4">
+                        <div class="icon-gradient w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">1</div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-xl mb-3 text-neutral-900">初步排查：这不是 Z.ai 的限流</h3>
+                            <p class="text-neutral-600 mb-4 leading-relaxed">升级了 Z.ai 的 Coding Plan，把 Hermes Agent 的主模型从 DeepSeek V4 Pro 切到 zai/glm-5.2，但第一个请求直接返回 HTTP 429 + provider code 1305。</p>
+                            
+                            <div class="bg-neutral-50 rounded-lg p-4 mb-4">
+                                <h4 class="font-medium text-neutral-800 mb-3">排查项目：</h4>
+                                <ul class="space-y-2 text-neutral-600 text-sm">
+                                    <li class="flex items-start">
+                                        <svg class="w-5 h-5 text-neutral-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                        </svg>
+                                        <span>Z.AI 后台显示额度充足（5小时和周额度都在90%以上）</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg class="w-5 h-5 text-neutral-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                        </svg>
+                                        <span>换了一个全新的 Coding Plan key，同样的 429 / code 1305</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg class="w-5 h-5 text-neutral-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                        </svg>
+                                        <span>降低请求长度、砍 tools、换 model 变体，全没用</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg class="w-5 h-5 text-brand-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                        </svg>
+                                        <span class="text-white font-medium">同一个 key 用 curl 裸调短 prompt，能通</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="glass-card rounded-xl p-8">
+                    <div class="flex items-start space-x-4">
+                        <div class="icon-gradient w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">2</div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-xl mb-3 text-neutral-900">缩小变量：同 key 不同 payload</h3>
+                            <p class="text-neutral-600 mb-4 leading-relaxed">用同一个 key 发两个请求进行对比测试：</p>
+                            
+                            <div class="grid md:grid-cols-2 gap-4">
+                                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                                    <div class="flex items-center space-x-2 mb-2">
+                                        <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                                        <span class="font-medium text-green-800">成功请求</span>
+                                    </div>
+                                    <pre class="text-xs bg-white rounded p-3 overflow-x-auto"><code class="text-neutral-700">curl 裸调:
+{"model": "glm-5.2", 
+ "messages": [
+   {"role":"user",
+    "content":"hi"}
+ ]}
+
+→ 200 正常返回</code></pre>
+                                </div>
+                                
+                                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                                    <div class="flex items-center space-x-2 mb-2">
+                                        <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                                        <span class="font-medium text-red-800">失败请求</span>
+                                    </div>
+                                    <pre class="text-xs bg-white rounded p-3 overflow-x-auto"><code class="text-neutral-700">Hermes Agent 完整请求:
+- system prompt
+- tools  
+- history
+
+→ 429 / code 1305 
+  overloaded</code></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="glass-card rounded-xl p-8">
+                    <div class="flex items-start space-x-4">
+                        <div class="icon-gradient w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">3</div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-xl mb-3 text-neutral-900">关键发现：GitHub #47685</h3>
+                            <p class="text-neutral-600 mb-4 leading-relaxed">在 GitHub 上找到了情况完全一致的 issue：NousResearch/hermes-agent#47685</p>
+                            
+                            <div class="bg-neutral-50 rounded-lg p-4 mb-4">
+                                <h4 class="font-medium text-neutral-800 mb-3">复现条件：</h4>
+                                <ul class="space-y-2 text-neutral-600 text-sm">
+                                    <li class="flex items-start">
+                                        <svg class="w-5 h-5 text-brand-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                        </svg>
+                                        <span><strong class="text-neutral-800">同 key、同 endpoint、同 model、同请求长度</strong></span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg class="w-5 h-5 text-brand-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                        </svg>
+                                        <span>唯一变量：<strong class="text-white">system prompt 的具体内容</strong></span>
+                                    </li>
+                                </ul>
+                            </div>
+                            
+                            <div class="bg-brand-50 border border-brand-200 rounded-lg p-4">
+                                <h4 class="font-medium text-brand-800 mb-2">🔍 关键发现</h4>
+                                <p class="text-neutral-700 text-sm leading-relaxed">当 prompt 包含精确短语 <code class="bg-white px-1 rounded">"Hermes Agent"</code> 时，返回 429 / code 1305；把它替换成 <code class="bg-white px-1 rounded">"Hermes framework"</code>（或任何其他词），立刻 200。</p>
+                                <p class="text-brand-700 text-sm mt-2 font-medium">结论：这不是限流，而是 Z.AI Coding Plan 后端对 system prompt 做了内容检测——可能是产品名/客户端指纹检测。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 4 -->
+                <div class="glass-card rounded-xl p-8">
+                    <div class="flex items-start space-x-4">
+                        <div class="icon-gradient w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">4</div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-xl mb-3 text-neutral-900">再次排查：这个词到底藏在哪</h3>
+                            <p class="text-neutral-600 mb-4 leading-relaxed">在 ~/.hermes 下搜索 "Hermes Agent"，发现 50 多处命中：</p>
+                            
+                            <div class="bg-neutral-50 rounded-lg p-4">
+                                <ul class="space-y-2 text-neutral-700 text-sm">
+                                    <li class="flex items-start">
+                                        <svg class="w-5 h-5 text-neutral-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                        </svg>
+                                        <span><code class="bg-white px-1 rounded">SOUL.md</code> ← 身份定义</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg class="w-5 h-5 text-neutral-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                        </svg>
+                                        <span><code class="bg-white px-1 rounded">skills/**/SKILL.md</code> ← mandatory guidance + skill 描述</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg class="w-5 h-5 text-neutral-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                        </svg>
+                                        <span><code class="bg-white px-1 rounded">agent/system_prompt.py</code> ← 内置 guidance 常量</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg class="w-5 h-5 text-neutral-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                        </svg>
+                                        <span><code class="bg-white px-1 rounded">agent/prompt_builder.py</code> ← DEFAULT_AGENT_IDENTITY 等</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg class="w-5 h-5 text-neutral-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                        </svg>
+                                        <span><code class="bg-white px-1 rounded">sessions/*.sqlite</code> ← 已持久化的 session system_prompt</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            
+                            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-4">
+                                <h4 class="font-medium text-yellow-800 mb-2">⚠️ 为什么不能全库 sed 替换</h4>
+                                <ul class="space-y-1 text-neutral-700 text-sm">
+                                    <li>• <strong>污染技能库</strong>：SOUL.md、skills 都是积累的内容，一刀切替换会破坏语义</li>
+                                    <li>• <strong>污染历史 session</strong>：已持久化的 session system_prompt 被改后，session resume 时会出现语义漂移</li>
+                                    <li>• <strong>被版本更新覆盖</strong>：Hermes 更新时这些文件被官方版本覆盖，改动静默丢失</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Solutions Section -->
+    <section id="solutions" class="py-16 px-4 bg-white/50">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-12">
+                <h2 class="font-display text-3xl font-bold text-neutral-900 mb-4">解决方案：双层修复</h2>
+                <p class="text-neutral-600 max-w-2xl mx-auto">改请求路径，不改磁盘。与其在数据源头逐个替换，不如在最终组装好的字符串上、发送前做一次原地替换。</p>
+            </div>
+            
+            <div class="space-y-8">
+                <!-- Solution 1: System Prompt Content Replacement -->
+                <div class="glass-card rounded-xl overflow-hidden">
+                    <div class="bg-gradient-to-r from-brand-500 to-brand-600 p-6">
+                        <div class="flex items-center space-x-3">
+                            <div class="icon-gradient w-12 h-12 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-xl text-white">第一层：System Prompt 内容替换</h3>
+                                <p class="text-brand-100 text-sm">在 agent/system_prompt.py 的 build_system_prompt() 返回前加一段</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-6">
+                        <div class="code-block rounded-lg p-4 mb-6">
+                            <pre class="text-sm text-neutral-700 overflow-x-auto"><code># Z.AI Coding Plan 的 glm-5.2 后端会检测 system prompt 里的精确短语
+# "Hermes Agent"，命中则返回误导性 429/code 1305。在最终组装好的
+# prompt 边界做替换，覆盖所有来源层（SOUL/skills/memory/guidance），
+# 不改动磁盘上的文档、技能或历史 session。
+provider_lower = str(getattr(agent, "provider", "") or "").lower()
+model_lower = str(getattr(agent, "model", "") or "").lower()
+if provider_lower == "zai" and "glm-5.2" in model_lower:
+    joined = joined.replace("Hermes Agent", "ZCode")</code></pre>
+                        </div>
+                        
+                        <div class="grid md:grid-cols-2 gap-4">
+                            <div class="bg-neutral-50 rounded-lg p-4">
+                                <h4 class="font-medium text-neutral-800 mb-2">为什么用 provider + model 双重 gate？</h4>
+                                <ul class="space-y-1 text-neutral-600 text-sm">
+                                    <li>• <code class="bg-white px-1 rounded">provider == "zai"</code>：只有 Z.AI 直连才触发。OpenRouter 转发的 zai-org/glm-5.2 不受影响。</li>
+                                    <li>• <code class="bg-white px-1 rounded">"glm-5.2" in model_lower</code>：只针对触发过滤的模型。glm-5.1 / glm-4.7 如果以后也有类似问题，加进来就行。</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="bg-neutral-50 rounded-lg p-4">
+                                <h4 class="font-medium text-neutral-800 mb-2">为什么放在 build_system_prompt() 尾部？</h4>
+                                <ul class="space-y-1 text-neutral-600 text-sm">
+                                    <li>• <strong>Prompt caching 是 sacred</strong>：一次 session 里 system prompt 字节级稳定，上游 provider 的 KV cache 才能复用。</li>
+                                    <li>• build_system_prompt() 只在 session 初始化和 context compression 重建时被调用，都是合法的缓存边界。</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Solution 2: Client Fingerprint Headers -->
+                <div class="glass-card rounded-xl overflow-hidden">
+                    <div class="bg-gradient-to-r from-brand-500 to-brand-600 p-6">
+                        <div class="flex items-center space-x-3">
+                            <div class="icon-gradient w-12 h-12 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-xl text-white">第二层：客户端指纹 Headers</h3>
+                                <p class="text-brand-100 text-sm">Z.AI 后端还会看 HTTP headers 判断请求来源</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-6">
+                        <div class="bg-neutral-50 rounded-lg p-4 mb-6">
+                            <h4 class="font-medium text-neutral-800 mb-2">官方客户端带三个指纹头：</h4>
+                            <div class="code-block rounded-lg p-3">
+                                <pre class="text-xs text-neutral-700 overflow-x-auto"><code>User-Agent: ZCode/0.14.8
+X-ZCode-App-Version: 0.14.8
+X-ZCode-Agent: glm</code></pre>
+                            </div>
+                        </div>
+                        
+                        <div class="code-block rounded-lg p-4 mb-6">
+                            <h4 class="font-medium text-neutral-800 mb-3">Header 工厂函数：</h4>
+                            <pre class="text-sm text-neutral-700 overflow-x-auto"><code>def build_zcode_headers() -> dict:
+    """Return the ZCode client fingerprint expected by Z.AI Coding Plan."""
+    return {
+        "User-Agent": "ZCode/0.14.8",
+        "X-ZCode-App-Version": "0.14.8",
+        "X-ZCode-Agent": "glm",
+    }</code></pre>
+                        </div>
+                        
+                        <div class="code-block rounded-lg p-4 mb-6">
+                            <h4 class="font-medium text-neutral-800 mb-3">然后在主 agent 请求路径注入：</h4>
+                            <pre class="text-sm text-neutral-700 overflow-x-auto"><code>elif (
+    getattr(self, "provider", None) == "zai"
+    or base_url_host_matches(base_url, "api.z.ai")
+    or base_url_host_matches(base_url, "open.bigmodel.cn")
+):
+    self._client_kwargs["default_headers"] = build_zcode_headers()</code></pre>
+                        </div>
+                        
+                        <div class="bg-brand-50 border border-brand-200 rounded-lg p-4">
+                            <h4 class="font-medium text-brand-800 mb-2">📋 覆盖范围</h4>
+                            <p class="text-neutral-700 text-sm">Auxiliary 路径（title 生成、context compression、vision 等）也要覆盖，一共四处：pool 解析、credential 解析、async 转换、custom endpoint resolution。每处加同样的 elif 分支。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Results Section -->
+    <section class="py-16 px-4">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-12">
+                <h2 class="font-display text-3xl font-bold text-neutral-900 mb-4">整体验证</h2>
+                <p class="text-neutral-600 max-w-2xl mx-auto">测试覆盖 + 端到端验证</p>
+            </div>
+            
+            <div class="grid md:grid-cols-2 gap-8">
+                <div class="glass-card rounded-xl p-6">
+                    <div class="flex items-center space-x-3 mb-4">
+                        <div class="icon-gradient w-10 h-10 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <h3 class="font-semibold text-lg text-neutral-900">测试覆盖</h3>
+                    </div>
+                    
+                    <div class="code-block rounded-lg p-4 mb-4">
+                        <pre class="text-xs text-neutral-700 overflow-x-auto"><code>python -m pytest tests/agent/test_system_prompt.py \
+  tests/run_agent/test_provider_attribution_headers.py -q
+
+22 passed in 24.54s</code></pre>
+                    </div>
+                    
+                    <ul class="space-y-2 text-neutral-600 text-sm">
+                        <li class="flex items-start">
+                            <svg class="w-5 h-5 text-brand-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            <span>Z.AI glm-5.2 会把 "Hermes Agent" 替换成 "ZCode"</span>
+                        </li>
+                        <li class="flex items-start">
+                            <svg class="w-5 h-5 text-brand-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            <span>非 Z.AI provider 不替换</span>
+                        </li>
+                        <li class="flex items-start">
+                            <svg class="w-5 h-5 text-brand-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            <span>Z.AI base_url 会注入 ZCode headers</span>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="glass-card rounded-xl p-6">
+                    <div class="flex items-center space-x-3 mb-4">
+                        <div class="icon-gradient w-10 h-10 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                            </svg>
+                        </div>
+                        <h3 class="font-semibold text-lg text-neutral-900">端到端验证</h3>
+                    </div>
+                    
+                    <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <div class="flex items-start space-x-3">
+                            <div class="bg-green-500 rounded-full p-2 flex-shrink-0">
+                                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-green-800 mb-1">✅ 验证通过</h4>
+                                <p class="text-neutral-700 text-sm">重启 Hermes，切 zai/glm-5.2，发消息。成功返回，无 429。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Experience Summary -->
+    <section class="py-16 px-4 bg-white/50">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-12">
+                <h2 class="font-display text-3xl font-bold text-neutral-900 mb-4">经验总结</h2>
+                <p class="text-neutral-600 max-w-2xl mx-auto">从这次问题排查中学到的经验教训</p>
+            </div>
+            
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="glass-card rounded-xl p-6">
+                    <div class="icon-gradient w-10 h-10 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-white font-bold">1</span>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-2 text-neutral-900">不是所有 429 都是限流</h3>
+                    <p class="text-neutral-600 text-sm leading-relaxed">当一个 429 出现在特定 provider + 特定 model + 特定 prompt 内容的组合下，优先考虑内容过滤而不是额度。</p>
+                </div>
+                
+                <div class="glass-card rounded-xl p-6">
+                    <div class="icon-gradient w-10 h-10 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-white font-bold">2</span>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-2 text-neutral-900">改请求路径，不改数据</h3>
+                    <p class="text-neutral-600 text-sm leading-relaxed">磁盘上的 SOUL.md、skills、session 是用户的资产。运行时的请求是可变流量。全库 sed 替换会把修 bug 变成埋雷。</p>
+                </div>
+                
+                <div class="glass-card rounded-xl p-6">
+                    <div class="icon-gradient w-10 h-10 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-white font-bold">3</span>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-2 text-neutral-900">Provider gate 是底线</h3>
+                    <p class="text-neutral-600 text-sm leading-relaxed">任何 provider-specific 的 workaround 必须 gated。全局改动会影响不相关的 provider，制造幽灵 bug。</p>
+                </div>
+                
+                <div class="glass-card rounded-xl p-6">
+                    <div class="icon-gradient w-10 h-10 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-white font-bold">4</span>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-2 text-neutral-900">Prompt caching invariant 不能破</h3>
+                    <p class="text-neutral-600 text-sm leading-relaxed">任何 system prompt 的修改必须在构建边界做，不能在 turn 循环里做。Hermes 的 cache 稳定性是设计核心。</p>
+                </div>
+                
+                <div class="glass-card rounded-xl p-6">
+                    <div class="icon-gradient w-10 h-10 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-white font-bold">5</span>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-2 text-neutral-900">客户端指纹检测比你想的常见</h3>
+                    <p class="text-neutral-600 text-sm leading-relaxed">从 Kimi（要求 User-Agent: claude-code/0.1.0）到 Z.AI（要求 ZCode headers），越来越多 provider 在网关层做客户端识别。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- References -->
+    <section class="py-16 px-4">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-12">
+                <h2 class="font-display text-3xl font-bold text-neutral-900 mb-4">参考文章</h2>
+            </div>
+            
+            <div class="space-y-4">
+                <a href="https://github.com/NousResearch/hermes-agent/issues/47685" target="_blank" class="block glass-card rounded-xl p-6 hover:bg-white transition-all">
+                    <div class="flex items-start space-x-4">
+                        <div class="icon-gradient w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-lg text-neutral-900 mb-1">GitHub Issue: Z.AI GLM-5.2 Coding Plan returns 429/code 1305</h3>
+                            <p class="text-neutral-600 text-sm">Z.AI glm-5.2 system prompt 内容过滤的原始报告</p>
+                        </div>
+                    </div>
+                </a>
+                
+                <div class="glass-card rounded-xl p-6">
+                    <div class="flex items-start space-x-4">
+                        <div class="icon-gradient w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-lg text-neutral-900 mb-1">技术文档参考</h3>
+                            <ul class="space-y-1 text-neutral-600 text-sm">
+                                <li>• ZCode 官方客户端请求头样本</li>
+                                <li>• Hermes model.default_headers 配置文档</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="border-t border-neutral-200 py-8 px-4">
+        <div class="max-w-6xl mx-auto">
+            <div class="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
+                <div class="flex items-center space-x-3">
+                    <img src="icon.png" alt="Hermes Agent" class="w-8 h-8">
+                    <span class="text-neutral-600 text-sm">© 2024 Hermes Agent</span>
+                </div>
+                
+                <div class="flex items-center space-x-6 text-sm">
+                    <a href="https://github.com/NousResearch/hermes-agent" class="text-neutral-600 hover:text-brand-500 transition-colors flex items-center space-x-2">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                        </svg>
+                        <span>GitHub</span>
+                    </a>
+                    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" class="text-neutral-600 hover:text-brand-500 transition-colors">
+                        CC BY-NC-SA 4.0
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Add scroll effect to nav
+        const nav = document.querySelector('nav');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 50) {
+                nav.classList.add('shadow-lg');
+            } else {
+                nav.classList.remove('shadow-lg');
+            }
+        });
+
+        // Animate cards on scroll
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.glass-card').forEach(card => {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(20px)';
+            card.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+            observer.observe(card);
+        });
+    </script>
+</body>
+</html>

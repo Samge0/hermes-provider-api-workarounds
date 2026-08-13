@@ -4,6 +4,9 @@
 >
 > 作者：Yawatasensei | 分类：技术分享 | 标签：开发, AI, LLM, AGENT
 
+
+> 🌐 **[在线宣传页](https://samge0.github.io/hermes-provider-api-workarounds/)** — 可视化了解功能特性与工作流程
+
 ---
 
 <img width="798" height="920" alt="Hermes_版本信息查询" src="https://github.com/user-attachments/assets/5e29bdfd-5da1-4d8b-b1b0-2b58003c364e" />
